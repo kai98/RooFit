@@ -12,7 +12,7 @@ using static RooFit.Utils;
 
 namespace RooFit
 {
-    class LegacyBuilder
+    class Builder
     {
         // Global Variables
         // default tolerance. 
@@ -25,8 +25,17 @@ namespace RooFit
         Brep extrusion = new Brep();
         // Potential Planes
         List<Plane> planeList = new List<Plane>();
+
+        // inlier threshold. (Max Dev from previous step)
+        double threshold = 0;
+
         // Parameter to control the reconstruction performance if applicable.
-        double n = 0;
+        int n = 4;
+        bool sortTopN;
+
+        // Data
+        // Plane -> Set of Inlier Points 
+        Dictionary<Plane, HashSet<Point3d>> planeInliers = new Dictionary<Plane, HashSet<Point3d>>();
 
         // Patch code, Get height and footprint plannar from extrusion. 
         public Brep ftPlanar, capPlanar;
@@ -35,15 +44,22 @@ namespace RooFit
         // Outputs
         public Brep solid = new Brep();
         public List<Brep> selectedFragments = new List<Brep>();
-    
-        public LegacyBuilder(List<Point3d> _pts, Brep _extrusion, List<Plane> _planes, double _n=-1, double tol=0.001)
+
+        HashSet<Point3d> totalInliers = new HashSet<Point3d>();
+
+
+        public Builder(List<Point3d> _pts, Brep _extrusion, List<Plane> _planes, double _threshold, int _n=4, double tol=0.001)
         {
-            pts = _pts;
-            extrusion = _extrusion;
-            planeList = _planes;
-            n = _n;
+            this.pts = _pts;
+            this.extrusion = _extrusion;
+            this.planeList = _planes;
+            this.threshold = _threshold;
+            this.n = _n; // n -> number of planes will be considered. 
+
+            // Do not sort the planes.. 
+            sortTopN = false;
         }
-    
+
         public void Solve()
         {
             // Adapt the previous polyfit modeling code into this testing code. 
@@ -54,22 +70,31 @@ namespace RooFit
             // Brep ftPlanar = Brep.CreatePlanarBreps(ftCurve, tol)[0];
             Brep ftSolid = extrusion;
             List<Plane> refinedPlanes = planeList;
-            var pointCloud = pts;
-
-            // Threshold = n..
-            var threshold = n;
+            var points = pts;
 
 
             // Get ftPlanr, capPlanr and height from extrusion. 
             ExtrusionInfo(extrusion, out ftPlanar, out capPlanar, out height);
 
+            // Vertical planes might produce unexpected outcput in the final output. 
+            // TODO: Vertical cuts can solve the problem in the next version. 
+            // Hardcoded to 0.05
+            double z_value = 0.05;
+            refinedPlanes = ExceptVerticalPlanes(refinedPlanes, z_value);
+
+            // Select the top N planes. 
+            refinedPlanes = TopNPlanes(refinedPlanes, this.n);
+
+            // Speed-up, May 03;
+            // Get inliers for each plane. 
+            var planeInlierMap = GetPlaneInlierSets(refinedPlanes, points, threshold);
 
             List<Brep> refinedPlanars = PlanesToPlanars(refinedPlanes, ftSolid, tol);
 
-            List<Brep> fragments = GetBrepsFragments(refinedPlanars, ftPlanar, capPlanar, tol);
-            
+            List<Brep> fragments = GetBrepsFragments(refinedPlanars, tol);
+
             fragments = SanCheck(fragments);
-            List<Brep> brepFaces = PlanarSelection(fragments, pointCloud, threshold, tol);
+            List<Brep> brepFaces = PlanarSelection(fragments, threshold, tol);
 
             // RooFit debugging
 
@@ -77,11 +102,66 @@ namespace RooFit
             selectedFragments = brepFaces;
 
             // new code: merge coplanar faces. 
-            // angleTolerance 15 degrees
-            solid.MergeCoplanarFaces(0.1, 15);
+            // angleTolerance 20 degrees
+            solid.MergeCoplanarFaces(0.5, 20);
+        }
+
+        // Getting the top n planes from plane inliers. 
+        List<Plane> TopNPlanes(List<Plane> planeList, int n)
+        {
+            var sortedList = new List<Plane>(planeList);
+
+            // sort the list. From largest to smallest, so take negative value. 
+            if (sortTopN)
+            {
+                sortedList.Sort(delegate (Plane a, Plane b)
+                {
+                    return -(planeInliers[a].Count - planeInliers[b].Count);
+                });
+            }
+            return new List<Plane>(sortedList.Take(n));
         }
 
 
+        // Comparer for Brep... based on the number of inliers. 
+
+        Dictionary<Plane, HashSet<Point3d>> GetPlaneInlierSets(List<Plane> planeList, List<Point3d> points, double threshold)
+        {
+            var inlierMap = new Dictionary<Plane, HashSet<Point3d>>();
+            foreach(Plane plane in planeList)
+            {
+                var inlierSet = GetInliers(plane, points, threshold);
+                inlierMap[plane] = inlierSet;
+
+                // May 03 Speed-up
+                this.totalInliers.UnionWith(inlierSet);
+            }
+            return inlierMap;
+        }
+
+        HashSet<Point3d> GetInliers(Plane plane, List<Point3d> points, double threshold)
+        {
+            HashSet<Point3d> inlierSet = new HashSet<Point3d>();
+            foreach(Point3d pt in points)
+            {
+                double absDiff = Math.Abs(plane.DistanceTo(pt));
+                if (absDiff <= threshold)
+                    inlierSet.Add(pt);
+            }
+            return inlierSet;
+        }
+
+        // Can be used to sepearte vertical planes and use them to seperate different smaller pieces in the next version. 
+        List<Plane> ExceptVerticalPlanes(List<Plane> planeList, double z_value)
+        {
+            List<Plane> result = new List<Plane>();
+            foreach(Plane plane in planeList)
+            {
+                if (Math.Abs(plane.Normal.Z) > z_value)
+                    result.Add(plane);
+            }
+            return result;
+        }
 
         // Methods from PolyFitv3 SolidBuilder 
         // Planes to Planars... integrated method
@@ -97,13 +177,12 @@ namespace RooFit
             List<Plane> planeList = SetPlaneOriginCloseTo(refinedPlanes, centroid);
 
             double length = diagonal.Length;
-            //Double length = diagonal.Length / 2 + maxHeight;
             Interval maxInterval = new Interval(-length, length);
             List<PlaneSurface> surfaceList = new List<PlaneSurface>();
 
             List<Brep> planarList = new List<Brep>();
 
-            for(int i = 0; i < planeList.Count; i++)
+            for (int i = 0; i < planeList.Count; i++)
             {
                 Plane plane = planeList[i];
 
@@ -116,7 +195,9 @@ namespace RooFit
                 Brep brep = pSurface.ToBrep();
                 Brep planar = brep.Trim(ftExtrusion, tolerance)[0];
                 if (planar != null)
+                {
                     planarList.Add(planar);
+                }
             }
             // Plane Operations: Refine Extrated Planes, Generate Wall Planes.. etc. 
             return planarList;
@@ -124,39 +205,20 @@ namespace RooFit
 
 
         // Ignored vertical fragments... 
-        public List<Brep> GetBrepsFragments(List<Brep> refinedPlanars, Brep ftPlanar, Brep capPlanar, double tolerance)
+        //public List<Brep> GetBrepsFragments(List<Brep> refinedPlanars, Brep ftPlanar, Brep capPlanar, double tolerance)
+
+        public List<Brep> GetBrepsFragments(List<Brep> planarList, double tolerance)
         {
             List<Brep> fragmentList = new List<Brep>();
-            foreach (Brep planar in refinedPlanars)
+            foreach (Brep currentPlanar in planarList)
             {
-                //if (IsVerticalPlanar(planar))
-                //    continue;
-                fragmentList.AddRange(GetFragments(planar, refinedPlanars));
+                List<Brep> currentFragments = GetFragments(currentPlanar, planarList);
+                fragmentList.AddRange(currentFragments);
             }
-
-            // RooFit debug: no need to add ftFragments. 
-            // ftFragments
-            //List<Brep> ftFragments = GetFragments(ftPlanar, refinedPlanars);
-            //fragmentList.AddRange(ftFragments);
-
-            // cap planar
-            //Vector3d vec = new Vector3d(0, 0, height);
-            //Brep capPlanar = ftPlanar.DuplicateBrep();
-            //capPlanar.Transform(Transform.Translation(vec));
-            List<Brep> capFragments = GetFragments(capPlanar, refinedPlanars);
-            fragmentList.AddRange(capFragments);
 
             fragmentList = SanCheck(fragmentList);
             return fragmentList;
 
-            // TODO: Vertical Splits
-            bool IsVerticalPlanar(Brep p)
-            {
-                Curve curve = Curve.JoinCurves(p.Curves3D)[0];
-                Plane plane;
-                curve.TryGetPlane(out plane);
-                return plane.Normal.Z == 0;
-            }
 
             List<Brep> GetFragments(Brep brep, List<Brep> cutterBreps)
             {
@@ -188,7 +250,7 @@ namespace RooFit
             }
         }
 
-        public List<Brep> PlanarSelection(List<Brep> fragments, List<Point3d> pointCloud, double threshold, double tolerance)
+        public List<Brep> PlanarSelection(List<Brep> fragments, double threshold, double tolerance)
         {
             Dictionary<Brep, int> numDict = new Dictionary<Brep, int>();
 
@@ -212,51 +274,48 @@ namespace RooFit
 
             return selectedFragments;
 
-
-            // if count == 0, choose the planar that should be there. Forexample, the most similar one to fit the cloest 3 points.. etc. 
-            Brep GetMostInlierPlanar(List<Brep> candidateList)
+            Brep GetMostInlierPlanar(List<Brep> fragmentList)
             {
                 int mostCount = 0;
-                Brep currPlanar = candidateList[0];
+                Brep currentFragment = fragmentList[0];
 
-                foreach (Brep candidate in candidateList)
+                foreach (Brep f in fragmentList)
                 {
-                    if (candidate == null)
+                    if (f == null)
                         continue;
 
-                    int numInliers = GetNumOfInliers(candidate);
+                    int numInliers = GetNumOfInliers(f);
                     if (numInliers > mostCount)
                     {
                         mostCount = numInliers;
-                        currPlanar = candidate;
+                        currentFragment = f;
                     }
                 }
-
-                // TODO: May 01, 2021. Fix: planar with no inlier points. 
-
-                return currPlanar;
+                return currentFragment;
             }
 
-            int GetNumOfInliers(Brep planar)
+            int GetNumOfInliers(Brep fragment)
             {
-                if (numDict.ContainsKey(planar))
+                if (numDict.ContainsKey(fragment))
                 {
-                    return numDict[planar];
+                    return numDict[fragment];
                 }
                 else
                 {
-                    int count = CountInliers(planar, pointCloud);
-                    numDict.Add(planar, count);
+                    int count = CountInliers(fragment, this.totalInliers);
+                    numDict.Add(fragment, count);
                     return count;
                 }
             }
 
-            int CountInliers(Brep planar, List<Point3d> pointList)
+            int CountInliers(Brep planar, IEnumerable<Point3d> pointList)
             {
                 int count = 0;
                 foreach (Point3d pt in pointList)
                 {
                     double distance = BrepDistanceToPoint(planar, pt);
+
+                    // After remap the points. should be less than tol. 
                     if (distance <= threshold)
                     {
                         count++;
@@ -274,21 +333,21 @@ namespace RooFit
         }
 
         // vertical relationship between two fragments. 0 -> conflict, 1 -> neighbor, 2-> waitlisted
-        public int CrossValidation(Brep fragmentA, Brep fragmentB, double tolerance)
+        public int ProjectionRelationaship(Brep fragmentA, Brep fragmentB, double tolerance)
         {
 
             // TODO: Memoization 
 
-            Curve curveA = GetProjectedCurve(fragmentA);
-            Curve curveB = GetProjectedCurve(fragmentB);
+            Curve curveA = GetCurveProjection(fragmentA);
+            Curve curveB = GetCurveProjection(fragmentB);
 
             if (curveA == null || curveB == null)
             {
                 return 0;
             }
 
-            Brep brepA = GetProjectedBrep(fragmentA, tolerance);
-            Brep brepB = GetProjectedBrep(fragmentB, tolerance);
+            Brep brepA = GetBrepProjection(fragmentA, tolerance);
+            Brep brepB = GetBrepProjection(fragmentB, tolerance);
 
             if (brepA == null || brepB == null)
             {
@@ -346,7 +405,7 @@ namespace RooFit
         Plane worldXY = Plane.WorldXY;
         Dictionary<Brep, Curve> projectedCurveDict = new Dictionary<Brep, Curve>();
         Dictionary<Brep, Brep> projectedBrepDict = new Dictionary<Brep, Brep>();
-        public Curve GetProjectedCurve(Brep brep)
+        public Curve GetCurveProjection(Brep brep)
         {
             if (projectedCurveDict.ContainsKey(brep))
             {
@@ -359,13 +418,13 @@ namespace RooFit
             return curve;
         }
 
-        public Brep GetProjectedBrep(Brep brep, double tolerance)
+        public Brep GetBrepProjection(Brep brep, double tolerance)
         {
             if (projectedBrepDict.ContainsKey(brep))
             {
                 return projectedBrepDict[brep];
             }
-            Curve curve = GetProjectedCurve(brep);
+            Curve curve = GetCurveProjection(brep);
             Brep newBrep = Brep.CreatePlanarBreps(curve, tolerance)[0];
             projectedBrepDict[brep] = newBrep;
             return newBrep;
@@ -381,7 +440,7 @@ namespace RooFit
             selectedFragments.Add(currPlanar);
 
             // update neighborFragments
-            neighborFragments = RemoveConfliction(currPlanar, neighborFragments, tol);
+            neighborFragments = RemoveConflictFragments(currPlanar, neighborFragments, tol);
 
             // update otherFragments
             List<Brep> tempList = new List<Brep>();
@@ -390,7 +449,7 @@ namespace RooFit
                 if (fragment == null)
                     continue;
 
-                int relationship = CrossValidation(currPlanar, fragment, tol);
+                int relationship = ProjectionRelationaship(currPlanar, fragment, tol);
                 if (relationship == 1)
                 {
                     neighborFragments.Add(fragment);
@@ -403,11 +462,11 @@ namespace RooFit
             otherFragments = tempList;
         }
 
-        public List<Brep> RemoveConfliction(Brep planar, List<Brep> brepList, double tolerance)
+        public List<Brep> RemoveConflictFragments(Brep planar, List<Brep> brepList, double tolerance)
         {
             if (brepList == null)
                 return brepList;
-            brepList.RemoveAll(p => CrossValidation(planar, p, tolerance) == 0);
+            brepList.RemoveAll(p => ProjectionRelationaship(planar, p, tolerance) == 0);
             return brepList;
         }
 
@@ -418,7 +477,6 @@ namespace RooFit
             roofBrep.Join(downExtrusion, tolerance, false);
             roofBrep = TrimExtrusion(ftPlanar, roofBrep, tolerance);
 
-
             Brep solid = roofBrep.CapPlanarHoles(tolerance);
             return solid;
         }
@@ -427,16 +485,19 @@ namespace RooFit
         public Brep GetExtrusion(Brep brep, Vector3d vector, double tolerance)
         {
             // Curve curve = Curve.JoinCurves(planar.Curves3D, tolerance)[0];
-            List<Brep> extrusions = new List<Brep>();
+            List<Brep> extrudes = new List<Brep>();
             Curve[] nakedEdge = brep.DuplicateNakedEdgeCurves(true, false);
 
             foreach (Curve c in nakedEdge)
             {
                 Brep b = Surface.CreateExtrusion(c, vector).ToBrep();
-                extrusions.Add(b);
+                extrudes.Add(b);
             }
-            return Brep.JoinBreps(extrusions, tolerance)[0];
+            return Brep.JoinBreps(extrudes, tolerance)[0];
         }
+
+
+        // either trimextrusion is OK. Just make sure we are getting the right one. 
 
         public Brep TrimExtrusion(Brep ftPlanar, Brep Extrusion, double tolerance)
         {
@@ -449,5 +510,14 @@ namespace RooFit
             return breps[1];
         }
 
+        // Assumed that ftPlanar is pointing downward. Therefore the main part of building was kept. 
+        //public Brep TrimExtrusion(Brep ftPlanar, Brep roofExtrude, double tol)
+        //{
+        //    // Using Brep.Trim Method. 
+        //    // Note: the parts of the brep that lie inside of the cutter are retained while the parts to the outside are discarded.
+        //    Brep[] brepsInside = roofExtrude.Trim(ftPlanar, tol);
+        //    Brep trimedExtrude = Brep.JoinBreps(brepsInside, tol)[0];
+        //    return trimedExtrude;
+        //}
     }
 }

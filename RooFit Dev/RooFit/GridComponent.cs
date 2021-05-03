@@ -20,7 +20,7 @@ namespace RooFit
         public GridComponent()
           : base("RooFit Grid", "Grid",
               "Grid Sampling in XY Plane",
-              "RooFit", "Dev")
+              "RooFit", "RooFit")
         {
         }
 
@@ -32,7 +32,7 @@ namespace RooFit
             // 0. Points input
             pManager.AddPointParameter("Points", "Points", "Points", GH_ParamAccess.list);
 
-            // 1  . Density level. Default: 1.2 X density
+            // 1  . Density level. Default: 1.0 X density
             pManager.AddNumberParameter("Density", "Density", "Density", GH_ParamAccess.item, 1);
         }
 
@@ -43,8 +43,6 @@ namespace RooFit
         {
             // Grided points. 
             pManager.AddPointParameter("Points", "Points", "Points", GH_ParamAccess.list);
-
-            pManager.AddMeshParameter("Mesh", "Mesh", "Mesh", GH_ParamAccess.item);
         }
 
         /// <summary>
@@ -58,9 +56,7 @@ namespace RooFit
         protected override void SolveInstance(IGH_DataAccess DA)
         {
             List<Point3d> inPts = new List<Point3d>();
-            double density = 1.2;
-
-            Mesh delMesh = new Mesh();
+            double density = 1.0;
 
             // input
             double tol = 0.001;
@@ -75,22 +71,22 @@ namespace RooFit
                 DA.SetDataList(0, inPts);
                 return;
             }
-                
+
 
             // Generate grid points 
-            delMesh = DelaunayMesh2(inPts);
+            Mesh delMesh = DelaunayMesh2(inPts);
             Plane xyPlane = Plane.WorldXY;
 
 
-            Polyline outline = delMesh.GetOutlines(xyPlane)[0];
+            Polyline[] outlines = delMesh.GetOutlines(xyPlane);
 
-            if (outline == null)
+            if (outlines == null)
             {
                 DA.SetDataList(0, inPts);
                 return;
             }
 
-            PolylineCurve outcurve = new PolylineCurve(outline);
+            PolylineCurve outcurve = new PolylineCurve(outlines[0]);
 
 
 

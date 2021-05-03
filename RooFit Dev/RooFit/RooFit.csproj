@@ -58,23 +58,16 @@
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="LegacyBuilderComponent.cs" />
-    <Compile Include="Analysis_MeshFaces.cs" />
-    <Compile Include="Analysis_Points.cs" />
-    <Compile Include="Distributor.cs" />
-    <Compile Include="DistributorComponent.cs" />
-    <Compile Include="Builder_v2Component.cs" />
-    <Compile Include="Voting.cs" />
+    <Compile Include="Analysis.cs" />
+    <Compile Include="BuilderComponent.cs" />
     <Compile Include="Refinement.cs" />
-    <Compile Include="LagacyBuilder.cs" />
     <Compile Include="RefinementComponent.cs" />
     <Compile Include="Preprocess.cs" />
     <Compile Include="AnalysisComponent.cs" />
     <Compile Include="GridComponent.cs" />
     <Compile Include="PreprocessComponent.cs" />
-    <Compile Include="TestComponent.cs" />
     <Compile Include="Utils.cs" />
-    <Compile Include="Builder_v2.cs" />
+    <Compile Include="Builder.cs" />
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>
       <DesignTime>True</DesignTime>
@@ -91,61 +84,21 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
-    <None Include="Resources\house.png" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Resources\builder.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\generator.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\roofit.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\union.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\group.png" />
+    <None Include="Resources\analysis.png" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Resources\grid.png" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Resources\model.png" />
+    <None Include="Resources\preprocess.png" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Resources\house design.png" />
+    <None Include="Resources\refinement.png" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="Resources\llama.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\download.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\end-points.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\expand.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\export.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\layers.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\resizing.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\rotate.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\size.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="Resources\surface.png" />
+    <None Include="Resources\builder.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

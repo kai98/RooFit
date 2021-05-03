@@ -20,7 +20,7 @@ namespace RooFit.Properties
         public PreprocessComponent()
           : base("RooFit Preprocess", "Preprocess",
               "Preprocess",
-              "RooFit", "Beta")
+              "RooFit", "RooFit")
         {
         }
 
@@ -89,7 +89,7 @@ namespace RooFit.Properties
             {
                 //You can add image files to your project resources and access them like this:
                 // return Resources.IconForThisComponent;
-                return Properties.Resources.layers;
+                return Properties.Resources.preprocess;
             }
         }
 

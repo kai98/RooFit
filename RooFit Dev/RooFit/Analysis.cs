@@ -13,13 +13,11 @@ using static RooFit.Utils;
 namespace RooFit
 {
     // RANSAC based on mesh. 
-    class Analysis_MeshFaces
+    class Analysis
     {
-        // Rhino tolerance. Default 0.001
-        double tol;
         // RANSAC Data and Parameters
         // Data - Mesh
-        Mesh delMesh;
+        // Mesh delMesh;
         // RANSAC - Threshold value. Threshold value to be considered as inlier. 
         double threshold;
         // RANSAC - Maximum number of iterations. Adaptive.
@@ -35,7 +33,7 @@ namespace RooFit
         readonly List<MeshFace> faces;
 
         // rd for random
-        Random rd;
+        readonly Random rd;
 
         // Ransac result
         public List<HashSet<MeshFace>> extractedFaces = new List<HashSet<MeshFace>>();
@@ -47,16 +45,19 @@ namespace RooFit
         // Plane List
         public List<Plane> resultPlaneList = new List<Plane>();
 
-        // isRefit?
-        bool isRefit = false;
-        int maxCount = 20;
+        // Using the max dev fromo this step as the inlier threshold for the next step. 
+        List<double> devList = new List<double>();
+        public double avgDev = 0;
+
+        // isRefit? => Refit the plane according to its inliers, yield better results. 
+        bool isRefit = true;
+        int maxCount = 15;
 
 
-        public Analysis_MeshFaces(Mesh _delMesh, double _threshold=0.25, double _tol=0.001)
+        public Analysis(Mesh _delMesh, double _threshold=0.25)
         {
-            this.delMesh = _delMesh;
+            // this.delMesh = _delMesh;
             this.threshold = _threshold;
-            this.tol = _tol;
             this.p = 0.1;
             this.d = 4;
 
@@ -77,12 +78,12 @@ namespace RooFit
 
         public void Solve()
         {
-            isRefit = true;
-            if (isRefit)
-                maxCount = 10;
+            maxCount = 10; // maximum number of planes. 
 
             RANSAC_FindPlanes(vertices, faces);
             GenerateResults();
+
+            this.avgDev = devList.Average();
         }
 
         public void GenerateResults()
@@ -254,7 +255,6 @@ namespace RooFit
             return p;
         }
 
-        // TODO: Rewrite
         public HashSet<MeshFace> GetInlierMeshFaces(Plane p, HashSet<MeshFace> candidates)
         {
             // creates two set. One for visited vertices, one for valid vertices. 
@@ -267,24 +267,6 @@ namespace RooFit
                 if (isInlierMF(p, mf, inlierDictionary))
                     inliers.Add(mf);
             }
-
-
-            // TODO: refit? 
-            // Might yield a better result... Could be slower. 
-
-        //    fit plane with valid points.Or with inlier MeshFaces. 
-          //  Plane validPlane = FitPlane(inliers);
-
-        ////TODO: write this as a function...
-        //     refind inliers with enhanced plane.
-            //inlierDictionary = new Dictionary<int, bool>();
-            //inliers = new HashSet<MeshFace>();
-
-        //    foreach (MeshFace mf in candidates)
-        //    {
-        //        if (isInlierMF(p, mf, inlierDictionary))
-        //            inliers.Add(mf);
-        //    }
 
             return inliers;
         }
@@ -320,8 +302,10 @@ namespace RooFit
                 return new Plane();
 
             Plane plane;
-            double maxDev;
-            Plane.FitPlaneToPoints(validPts, out plane, out maxDev);
+            double currentMaxDev;
+            Plane.FitPlaneToPoints(validPts, out plane, out currentMaxDev);
+
+            this.devList.Add(Math.Abs(currentMaxDev));
 
             // Maybe we can update the threshold with maxDev. 
             // TODO: adaptive threshold implementation after the initial guess

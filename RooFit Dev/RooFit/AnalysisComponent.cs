@@ -17,7 +17,7 @@ namespace RooFit
         public AnalysisComponent()
           : base("RooFit Analysis", "Analysis",
               "Analysis Component for RooFit",
-              "RooFit", "Beta")
+              "RooFit", "RooFit")
         {
         }
 
@@ -54,12 +54,11 @@ namespace RooFit
         {
             Mesh delMesh = null;
             Double threshold = 0.5;
-            Double tol = 0.001;
 
             DA.GetData(0, ref delMesh);
             DA.GetData(1, ref threshold);
 
-            Analysis_MeshFaces analysis = new Analysis_MeshFaces(delMesh, threshold, tol);
+            Analysis analysis = new Analysis(delMesh, threshold);
             analysis.Solve();
 
             DA.SetDataList(0, analysis.resultPlaneList);
@@ -75,7 +74,7 @@ namespace RooFit
             {
                 //You can add image files to your project resources and access them like this:
                 // return Resources.IconForThisComponent;
-                return Properties.Resources.rotate;
+                return Properties.Resources.analysis;
             }
         }
 

@@ -13,7 +13,7 @@ namespace RooFit
         public RefinementComponent()
           : base("RooFit Refinement", "Refinement",
               "Refinement",
-              "RooFit", "Beta")
+              "RooFit", "Dev")
         {
         }
 
@@ -31,9 +31,6 @@ namespace RooFit
             // Some parameters for testing
             // 2 - Similarity threshold in xy direction
             pManager.AddNumberParameter("XY Similarity", "XY Similarity", "XY Similarity", GH_ParamAccess.item);
-
-            //3 - Similarity threshold in z direction
-            //pManager.AddNumberParameter("Z Similarity", "Z Similarity", "Z Similarity", GH_ParamAccess.item);
 
         }
 
@@ -74,7 +71,7 @@ namespace RooFit
             {
                 //You can add image files to your project resources and access them like this:
                 // return Resources.IconForThisComponent;
-                return Properties.Resources.resizing;
+                return Properties.Resources.refinement;
             }
         }
 
